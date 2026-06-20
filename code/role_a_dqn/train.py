@@ -1,7 +1,11 @@
 import gymnasium as gym
 import drone_dispatch_env
 import numpy as np
-#state preprocessing.
+import torch
+
+from network import DQNNetwork
+
+
 def preprocess_state(obs):
 
     drones = obs["drones"].flatten()
@@ -18,77 +22,67 @@ def preprocess_state(obs):
 
     return state
 
+
+# Environment oluştur
 env = gym.make("DroneDispatch-v0")
 
+# Reset
 obs, info = env.reset(seed=0)
 
-print("OBS KEYS:")
-print(obs.keys())
-
-print("\nDRONES SHAPE:")
-print(obs["drones"].shape)
-
-print("\nORDERS SHAPE:")
-print(obs["orders"].shape)
-
-print("\nGRID SHAPE:")
-print(obs["grid"].shape)
-
-print("\nTIME:")
-print(obs["time"])
-
-print("\nACTION MASK SHAPE:")
-print(obs["action_mask"].shape)
-
-print("\nNUMBER OF VALID ACTIONS:")
-print(np.sum(obs["action_mask"]))
-
-print("\nFIRST DRONE:")
-print(obs["drones"][0])
-
-print("\nFIRST ORDER:")
-print(obs["orders"][0])
-
-print("\nACTION MASK:")
-print(obs["action_mask"][:30])
-
-import torch
-from network import DQNNetwork
-
+# State ve action boyutlarını belirle
 state = preprocess_state(obs)
-
-state_tensor = torch.FloatTensor(state).unsqueeze(0)
 
 state_size = len(state)
 action_size = len(obs["action_mask"])
 
+print("STATE SIZE:", state_size)
+print("ACTION SIZE:", action_size)
+
+# DQN ağı
 model = DQNNetwork(state_size, action_size)
 
-q_values = model(state_tensor)
+# Episode değişkenleri
+terminated = False
+truncated = False
 
-print("\nQ VALUES SHAPE:")
-print(q_values.shape)
+total_reward = 0
+step_count = 0
 
-print("\nFIRST 10 Q VALUES:")
-print(q_values[0][:10].detach().numpy())
+random_actions = 0
+greedy_actions = 0
 
-state = preprocess_state(obs)
+# Episode döngüsü
+while not terminated and not truncated:
 
-print("\nSTATE SHAPE:")
-print(state.shape)
+    state = preprocess_state(obs)
 
-best_action = torch.argmax(q_values).item()
+    state_tensor = torch.FloatTensor(state).unsqueeze(0)
 
-print("\nSELECTED ACTION:")
-print(best_action)
+    q_values = model(state_tensor)
 
-next_obs, reward, terminated, truncated, info = env.step(best_action)
+    epsilon = 0.1
 
-print("\nREWARD:")
-print(reward)
+    if np.random.random() < epsilon:
 
-print("\nTERMINATED:")
-print(terminated)
+       valid_actions = np.where(obs["action_mask"] == 1)[0]
+       action = np.random.choice(valid_actions)
+       random_actions += 1
 
-print("\nTRUNCATED:")
-print(truncated)
+    else:
+
+       action = torch.argmax(q_values).item()
+       greedy_actions += 1
+
+    next_obs, reward, terminated, truncated, info = env.step(action)
+
+    total_reward += reward
+    step_count += 1
+
+    obs = next_obs
+
+print("\nEPISODE FINISHED")
+print("TOTAL REWARD:", total_reward)
+print("STEPS:", step_count)
+
+print("RANDOM ACTIONS:", random_actions)
+print("GREEDY ACTIONS:", greedy_actions)
