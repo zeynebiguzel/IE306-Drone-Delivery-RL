@@ -1,6 +1,22 @@
 import gymnasium as gym
 import drone_dispatch_env
 import numpy as np
+#state preprocessing.
+def preprocess_state(obs):
+
+    drones = obs["drones"].flatten()
+    orders = obs["orders"].flatten()
+    grid = obs["grid"].flatten()
+    time = obs["time"].flatten()
+
+    state = np.concatenate([
+        drones,
+        orders,
+        grid,
+        time
+    ])
+
+    return state
 
 env = gym.make("DroneDispatch-v0")
 
@@ -39,14 +55,24 @@ print(obs["action_mask"][:30])
 import torch
 from network import DQNNetwork
 
-state_size = 581
-action_size = 169
+state = preprocess_state(obs)
+
+state_tensor = torch.FloatTensor(state).unsqueeze(0)
+
+state_size = len(state)
+action_size = len(obs["action_mask"])
 
 model = DQNNetwork(state_size, action_size)
 
-dummy_state = torch.randn(1, state_size)
-
-q_values = model(dummy_state)
+q_values = model(state_tensor)
 
 print("\nQ VALUES SHAPE:")
 print(q_values.shape)
+
+print("\nFIRST 10 Q VALUES:")
+print(q_values[0][:10].detach().numpy())
+
+state = preprocess_state(obs)
+
+print("\nSTATE SHAPE:")
+print(state.shape)
