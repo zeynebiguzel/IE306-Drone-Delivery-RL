@@ -76,3 +76,19 @@ state = preprocess_state(obs)
 
 print("\nSTATE SHAPE:")
 print(state.shape)
+
+best_action = torch.argmax(q_values).item()
+
+print("\nSELECTED ACTION:")
+print(best_action)
+
+next_obs, reward, terminated, truncated, info = env.step(best_action)
+
+print("\nREWARD:")
+print(reward)
+
+print("\nTERMINATED:")
+print(terminated)
+
+print("\nTRUNCATED:")
+print(truncated)
