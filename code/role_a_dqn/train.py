@@ -4,6 +4,7 @@ import numpy as np
 import torch
 
 from network import DQNNetwork
+from replay_buffer import ReplayBuffer
 
 
 def preprocess_state(obs):
@@ -29,7 +30,7 @@ env = gym.make("DroneDispatch-v0")
 # Reset
 obs, info = env.reset(seed=0)
 
-# State ve action boyutlarını belirle
+# State ve action boyutları
 state = preprocess_state(obs)
 
 state_size = len(state)
@@ -41,6 +42,9 @@ print("ACTION SIZE:", action_size)
 # DQN ağı
 model = DQNNetwork(state_size, action_size)
 
+# Replay Buffer
+buffer = ReplayBuffer()
+
 # Episode değişkenleri
 terminated = False
 truncated = False
@@ -51,6 +55,8 @@ step_count = 0
 random_actions = 0
 greedy_actions = 0
 
+epsilon = 0.1
+
 # Episode döngüsü
 while not terminated and not truncated:
 
@@ -60,29 +66,45 @@ while not terminated and not truncated:
 
     q_values = model(state_tensor)
 
-    epsilon = 0.1
-
+    # Epsilon-Greedy
     if np.random.random() < epsilon:
 
-       valid_actions = np.where(obs["action_mask"] == 1)[0]
-       action = np.random.choice(valid_actions)
-       random_actions += 1
+        valid_actions = np.where(obs["action_mask"] == 1)[0]
+        action = np.random.choice(valid_actions)
+
+        random_actions += 1
 
     else:
 
-       action = torch.argmax(q_values).item()
-       greedy_actions += 1
+        action = torch.argmax(q_values).item()
 
+        greedy_actions += 1
+
+    # Environment adımı
     next_obs, reward, terminated, truncated, info = env.step(action)
+
+    # Replay Buffer'a kaydet
+    done = terminated or truncated
+
+    buffer.add(
+        state,
+        action,
+        reward,
+        preprocess_state(next_obs),
+        done
+    )
 
     total_reward += reward
     step_count += 1
 
     obs = next_obs
 
+# Sonuçlar
 print("\nEPISODE FINISHED")
 print("TOTAL REWARD:", total_reward)
 print("STEPS:", step_count)
 
 print("RANDOM ACTIONS:", random_actions)
 print("GREEDY ACTIONS:", greedy_actions)
+
+print("BUFFER SIZE:", len(buffer))
