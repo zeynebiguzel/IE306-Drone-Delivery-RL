@@ -1,12 +1,3 @@
-"""
-Double DQN implementation.
-
-Action selection:
-    Online Network
-
-Action evaluation:
-    Target Network
-"""
 import gymnasium as gym
 import drone_dispatch_env
 import numpy as np
@@ -14,7 +5,7 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 
-from network import DQNNetwork
+from dueling_network import DuelingDQNNetwork
 from replay_buffer import ReplayBuffer
 
 
@@ -51,13 +42,13 @@ print("STATE SIZE:", state_size)
 print("ACTION SIZE:", action_size)
 
 # Online Network
-model = DQNNetwork(
+model = DuelingDQNNetwork(
     state_size,
     action_size
 )
 
 # Target Network
-target_model = DQNNetwork(
+target_model = DuelingDQNNetwork(
     state_size,
     action_size
 )
