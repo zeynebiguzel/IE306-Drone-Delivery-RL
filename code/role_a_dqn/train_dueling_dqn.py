@@ -4,13 +4,20 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
+import argparse
+import random
 
 from dueling_network import DuelingDQNNetwork
 from replay_buffer import ReplayBuffer
 
+def set_seed(seed_value):
+    random.seed(seed_value)
+    np.random.seed(seed_value)
+    torch.manual_seed(seed_value)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed_value)
 
 def preprocess_state(obs):
-
     drones = obs["drones"].flatten()
     orders = obs["orders"].flatten()
     grid = obs["grid"].flatten()
@@ -23,6 +30,15 @@ def preprocess_state(obs):
         time
     ])
 
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=0
+)
+args = parser.parse_args()
+seed = args.seed
+set_seed(seed)
 
 # Parameters
 num_episodes = 10
@@ -32,12 +48,11 @@ gamma = 0.99
 
 # Environment
 env = gym.make("DroneDispatch-v0")
-
-obs, info = env.reset(seed=0)
+obs, info = env.reset(seed=seed)
 
 state_size = len(preprocess_state(obs))
 action_size = len(obs["action_mask"])
-
+print("SEED:", seed)
 print("STATE SIZE:", state_size)
 print("ACTION SIZE:", action_size)
 
@@ -46,17 +61,14 @@ model = DuelingDQNNetwork(
     state_size,
     action_size
 )
-
 # Target Network
 target_model = DuelingDQNNetwork(
     state_size,
     action_size
 )
-
 target_model.load_state_dict(
     model.state_dict()
 )
-
 target_model.eval()
 
 # Optimizer
@@ -64,14 +76,15 @@ optimizer = optim.Adam(
     model.parameters(),
     lr=0.001
 )
-
 # Replay Buffer
 buffer = ReplayBuffer()
 
 # Training Loop
 for episode in range(num_episodes):
 
-    obs, info = env.reset()
+    obs, info = env.reset(
+    seed=seed + episode
+    )
 
     terminated = False
     truncated = False
@@ -225,5 +238,8 @@ for episode in range(num_episodes):
         f"Reward = {total_reward:.2f} | "
         f"Buffer = {len(buffer)}"
     )
-
+torch.save(
+    model.state_dict(),
+    f"weights/dueling_dqn_seed{seed}.pt"
+)
 print("\nTRAINING FINISHED")
