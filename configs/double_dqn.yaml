@@ -1,0 +1,11 @@
+num_episodes: 10
+
+batch_size: 32
+
+epsilon: 0.1
+
+gamma: 0.99
+
+learning_rate: 0.001
+
+target_update_frequency: 5

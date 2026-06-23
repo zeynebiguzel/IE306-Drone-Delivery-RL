@@ -6,6 +6,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import argparse
 import random
+import yaml
 
 from network import DQNNetwork
 from replay_buffer import ReplayBuffer
@@ -40,11 +41,19 @@ args = parser.parse_args()
 seed = args.seed
 set_seed(seed)
 
-# Parameters
-num_episodes = 10
-batch_size = 32
-epsilon = 0.1
-gamma = 0.99
+with open(
+    "configs/double_dqn.yaml",
+    "r"
+) as f:
+
+    config = yaml.safe_load(f)
+
+num_episodes = config["num_episodes"]
+batch_size = config["batch_size"]
+epsilon = config["epsilon"]
+gamma = config["gamma"]
+learning_rate = config["learning_rate"]
+target_update_frequency = config["target_update_frequency"]
 
 # Environment
 env = gym.make("DroneDispatch-v0")
@@ -53,7 +62,6 @@ obs, info = env.reset(seed=seed)
 state_size = len(preprocess_state(obs))
 action_size = len(obs["action_mask"])
 
-print("SEED:", seed)
 print("STATE SIZE:", state_size)
 print("ACTION SIZE:", action_size)
 
@@ -74,7 +82,7 @@ target_model.eval()
 # Optimizer
 optimizer = optim.Adam(
     model.parameters(),
-    lr=0.001
+    lr=learning_rate
 )
 # Replay Buffer
 buffer = ReplayBuffer()
@@ -195,7 +203,7 @@ for episode in range(num_episodes):
             optimizer.step()
 
     # Target Network Update
-    if (episode + 1) % 5 == 0:
+    if (episode + 1) % target_update_frequency == 0:
         target_model.load_state_dict(
             model.state_dict()
         )
