@@ -61,11 +61,6 @@ print("ACTION SIZE:", action_size)
 # Online Network
 model = DQNNetwork(state_size, action_size)
 
-# Target Network
-target_model = DQNNetwork(state_size, action_size)
-target_model.load_state_dict(model.state_dict())
-target_model.eval()
-
 # Optimizer
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
@@ -130,7 +125,7 @@ for episode in range(num_episodes):
 
             # Target Q
             with torch.no_grad():
-                next_q_values = target_model(next_states)
+                next_q_values = model(next_states)
                 max_next_q = next_q_values.max(dim=1)[0]
                 target_q = rewards + gamma * max_next_q * (1 - dones)
 
@@ -142,10 +137,6 @@ for episode in range(num_episodes):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
-    # Target Network Update
-    if (episode + 1) % 5 == 0:
-        target_model.load_state_dict(model.state_dict())
 
     episode_rewards.append(total_reward)
     print(
@@ -160,11 +151,11 @@ torch.save(
     f"weights/dqn_seed{seed}.pt"
 )
 
-with open(f"logs/dqn_seed{seed}.csv", "w") as f:
+with open(f"logs/dqn_no_target_seed{seed}.csv", "w") as f:
     f.write("episode,reward\n")
     for i, reward in enumerate(episode_rewards, start=1):
         f.write(f"{i},{reward}\n")
 
-print(f"MODEL SAVED: weights/dqn_seed{seed}.pt")
+print(f"MODEL SAVED: weights/dqn_no_target_seed{seed}.pt")
 print("\nTRAINING FINISHED")
 print("SEED:", seed)

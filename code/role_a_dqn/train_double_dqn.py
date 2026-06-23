@@ -78,11 +78,13 @@ optimizer = optim.Adam(
 )
 # Replay Buffer
 buffer = ReplayBuffer()
+episode_rewards = []
+
 # Training Loop
 for episode in range(num_episodes):
     obs, info = env.reset(
-    seed=seed + episode
-)
+        seed=seed + episode
+    )
     terminated = False
     truncated = False
     total_reward = 0
@@ -162,14 +164,13 @@ for episode in range(num_episodes):
 
             # Double DQN Target
             with torch.no_grad():
-
                 next_actions = model(
                     next_states
                 ).argmax(dim=1)
 
                 next_q_values = target_model(
                     next_states
-          )
+                )
 
                 max_next_q = next_q_values.gather(
                     1,
@@ -179,8 +180,7 @@ for episode in range(num_episodes):
                 target_q = (
                     rewards
                     + gamma * max_next_q * (1 - dones)
-      )
-
+                )
 
             current_q = current_q.view(-1)
             target_q = target_q.view(-1)
@@ -191,25 +191,37 @@ for episode in range(num_episodes):
             )
 
             optimizer.zero_grad()
-
             loss.backward()
-
             optimizer.step()
 
     # Target Network Update
     if (episode + 1) % 5 == 0:
-
         target_model.load_state_dict(
             model.state_dict()
         )
 
+    episode_rewards.append(total_reward)
     print(
         f"Episode {episode + 1} | "
         f"Reward = {total_reward:.2f} | "
         f"Buffer = {len(buffer)}"
     )
+
+# Dosya Kayıtları
 torch.save(
     model.state_dict(),
     f"weights/double_dqn_seed{seed}.pt"
 )
+with open(
+    f"logs/double_double_dqn_seed{seed}.csv",
+    "w"
+) as f:
+    f.write("episode,reward\n")
+    for i, reward in enumerate(
+        episode_rewards,
+        start=1
+    ):
+        f.write(
+            f"{i},{reward}\n"
+        )
 print("\nTRAINING FINISHED")
