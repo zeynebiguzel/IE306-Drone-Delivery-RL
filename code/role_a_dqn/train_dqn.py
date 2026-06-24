@@ -23,43 +23,23 @@ def preprocess_state(obs):
     orders = obs["orders"].flatten()
     grid = obs["grid"].flatten()
     time = obs["time"].flatten()
+    return np.concatenate([drones, orders, grid, time])
 
-    return np.concatenate([
-        drones,
-        orders,
-        grid,
-        time
-    ])
-
-# Argparse ile Terminal Verisini Okuyoruz
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--seed",
-    type=int,
-    default=0
-)
+parser.add_argument("--seed", type=int, default=0)
 args = parser.parse_args()
 seed = args.seed
 
 set_seed(seed)
 
-with open(
-    "configs/dqn.yaml",
-    "r"
-) as f:
-
-    config = yaml.safe_load(f)
+with open("configs/dqn.yaml", "r") as f:
+        config = yaml.safe_load(f)
 
 num_episodes = config["num_episodes"]
-
 batch_size = config["batch_size"]
-
 epsilon = config["epsilon"]
-
 gamma = config["gamma"]
-
 learning_rate = config["learning_rate"]
-
 target_update_frequency = config[
     "target_update_frequency"
 ]
@@ -170,7 +150,7 @@ for episode in range(num_episodes):
         f"Buffer = {len(buffer)}"
     )
 
-# Dosya Kayıt Adımları (Döngü bittikten sonra çalışır)
+# Dosya Kayıt Adımları 
 torch.save(
     model.state_dict(),
     f"weights/dqn_seed{seed}.pt"

@@ -79,6 +79,7 @@ target_model.load_state_dict(
     model.state_dict()
 )
 target_model.eval()
+
 # Optimizer
 optimizer = optim.Adam(
     model.parameters(),

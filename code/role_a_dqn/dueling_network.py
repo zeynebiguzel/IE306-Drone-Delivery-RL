@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
 
-
 class DuelingDQNNetwork(nn.Module):
-
     def __init__(self, state_size, action_size):
         super().__init__()
 
@@ -28,13 +26,9 @@ class DuelingDQNNetwork(nn.Module):
         )
 
     def forward(self, x):
-
         features = self.feature(x)
-
         value = self.value_stream(features)
-
         advantage = self.advantage_stream(features)
-
         q_values = (
             value
             + advantage
@@ -43,5 +37,4 @@ class DuelingDQNNetwork(nn.Module):
                 keepdim=True
             )
         )
-
         return q_values

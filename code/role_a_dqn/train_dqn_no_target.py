@@ -48,7 +48,7 @@ batch_size = 32
 epsilon = 0.1
 gamma = 0.99
 
-# Environment oluşturma ve İLK reset
+# Environment 
 env = gym.make("DroneDispatch-v0")
 obs, info = env.reset(seed=seed)
 
@@ -71,7 +71,6 @@ episode_rewards = []
 # Training Loop
 for episode in range(num_episodes):
 
-    # Her episode kendi içinde deterministik ve sıralı ilerliyor
     obs, info = env.reset(seed=seed + episode)
 
     terminated = False
@@ -145,7 +144,7 @@ for episode in range(num_episodes):
         f"Buffer = {len(buffer)}"
     )
 
-# Dosya Kayıt Adımları (Döngü bittikten sonra çalışır)
+# Dosya Kayıt Adımları 
 torch.save(
     model.state_dict(),
     f"weights/dqn_seed{seed}.pt"
