@@ -13,3 +13,11 @@ Thumbs.db
 # Editor folders
 .vscode/
 .idea/
+
+# Test/cache files
+.pytest_cache/
+*.egg-info/
+
+# Build/cache
+build/
+dist/
