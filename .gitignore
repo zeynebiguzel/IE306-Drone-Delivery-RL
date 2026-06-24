@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+
+# Windows system files
+desktop.ini
+Thumbs.db
+
+# Editor folders
+.vscode/
+.idea/
