@@ -1,0 +1,25 @@
+method: a2c
+env_id: DroneDispatch-v0
+
+seed: 0
+total_timesteps: 512
+
+gamma: 0.99
+gae_lambda: 0.95
+learning_rate: 0.0003
+
+num_steps: 64
+hidden_size: 128
+
+entropy_coef: 0.01
+value_coef: 0.5
+max_grad_norm: 0.5
+
+advantage_normalization: true
+
+eval:
+  config_path: configs/eval_standard.yaml
+  seeds: [0]
+  baselines:
+    - random
+    - greedy_nearest

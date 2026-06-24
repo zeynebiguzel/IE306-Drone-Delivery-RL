@@ -30,6 +30,7 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
 from networks import ActorCritic, flatten_dispatch_obs  # local Role B file
+from manual_optim import ManualAdam
 
 try:
     import drone_dispatch_env  # registers env ids
@@ -125,7 +126,7 @@ def train_a2c(config_path: Path) -> None:
         hidden_size=hidden_size,
     ).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = ManualAdam(model.parameters(), lr=learning_rate)
 
     log_path = ROOT / "logs" / "role_b" / f"a2c_seed{seed}.csv"
     weights_path = ROOT / "weights" / "role_b" / f"a2c_seed{seed}.pt"
