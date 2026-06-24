@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
 
-
 class DQNNetwork(nn.Module):
-
     def __init__(self, state_size, action_size):
         super().__init__()
 
@@ -16,6 +14,5 @@ class DQNNetwork(nn.Module):
 
             nn.Linear(256, action_size)
         )
-
     def forward(self, x):
         return self.net(x)
