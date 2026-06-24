@@ -1,0 +1,18 @@
+method: behavior_cloning
+expert_policy: greedy_nearest
+env_id: DroneDispatch-v0
+
+run_name: bc_greedy
+
+seed: 0
+num_samples: 10000
+epochs: 8
+batch_size: 256
+
+learning_rate: 0.0003
+hidden_size: 128
+max_grad_norm: 0.5
+
+eval:
+  config_path: configs/eval_standard.yaml
+  seeds: [0, 1, 2]
