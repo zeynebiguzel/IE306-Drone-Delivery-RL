@@ -1,0 +1,56 @@
+{
+  "mean": {
+    "cost_per_order": 24.37131904761904,
+    "success_rate": 0.6177156177156177,
+    "ontime_rate": 0.9480952380952381,
+    "mean_delivery_time": 34.35238095238095,
+    "energy_per_order": 0.3282079365079313,
+    "depletion_events": 8.0,
+    "idle_pct": 0.15127822891226603,
+    "charger_utilization": 0.028670962571338082,
+    "n_delivered": 27.666666666666668,
+    "n_dropped": 17.666666666666668,
+    "episode_return": -267.35200000000003
+  },
+  "per_seed": [
+    {
+      "cost_per_order": 24.835799999999995,
+      "success_rate": 0.6410256410256411,
+      "ontime_rate": 0.88,
+      "mean_delivery_time": 37.2,
+      "energy_per_order": 0.33979999999999444,
+      "depletion_events": 8,
+      "idle_pct": 0.10093652445369407,
+      "charger_utilization": 0.01768990634755463,
+      "n_delivered": 25,
+      "n_dropped": 14,
+      "episode_return": -261.185
+    },
+    {
+      "cost_per_order": 22.13685714285714,
+      "success_rate": 0.6666666666666666,
+      "ontime_rate": 0.9642857142857143,
+      "mean_delivery_time": 34.357142857142854,
+      "energy_per_order": 0.3368571428571378,
+      "depletion_events": 8,
+      "idle_pct": 0.14721254355400698,
+      "charger_utilization": 0.03571428571428571,
+      "n_delivered": 28,
+      "n_dropped": 14,
+      "episode_return": -205.77200000000016
+    },
+    {
+      "cost_per_order": 26.141299999999994,
+      "success_rate": 0.5454545454545454,
+      "ontime_rate": 1.0,
+      "mean_delivery_time": 31.5,
+      "energy_per_order": 0.3079666666666617,
+      "depletion_events": 8,
+      "idle_pct": 0.205685618729097,
+      "charger_utilization": 0.03260869565217391,
+      "n_delivered": 30,
+      "n_dropped": 25,
+      "episode_return": -335.0989999999998
+    }
+  ]
+}
