@@ -31,7 +31,6 @@ if str(ROOT) not in sys.path:
 
 from networks import ActorCritic, flatten_dispatch_obs  # local Role B file
 from manual_optim import ManualAdam
-
 try:
     import drone_dispatch_env  # registers env ids
     from drone_dispatch_env import Config, DroneDispatchEnv
@@ -97,6 +96,8 @@ def train_a2c(config_path: Path) -> None:
     train_cfg = load_yaml(config_path)
 
     seed = int(train_cfg.get("seed", 0))
+    run_name = str(train_cfg.get("run_name", "a2c"))
+    init_weights = train_cfg.get("init_weights", None)
     total_timesteps = int(train_cfg.get("total_timesteps", 50_000))
     num_steps = int(train_cfg.get("num_steps", 128))
 
@@ -126,10 +127,25 @@ def train_a2c(config_path: Path) -> None:
         hidden_size=hidden_size,
     ).to(device)
 
-    optimizer = ManualAdam(model.parameters(), lr=learning_rate)
+    if init_weights:
+        init_path = ROOT / str(init_weights)
+        try:
+            checkpoint = torch.load(init_path, map_location=device, weights_only=False)
+        except TypeError:
+            checkpoint = torch.load(init_path, map_location=device)
 
-    log_path = ROOT / "logs" / "role_b" / f"a2c_seed{seed}.csv"
-    weights_path = ROOT / "weights" / "role_b" / f"a2c_seed{seed}.pt"
+        if int(checkpoint["obs_dim"]) != obs_dim or int(checkpoint["n_actions"]) != n_actions:
+            raise ValueError(
+                "Initial weights do not match the current environment dimensions."
+            )
+
+        model.load_state_dict(checkpoint["model_state_dict"])
+        print(f"[info] Loaded initial weights from {init_path}")
+
+    optimizer = ManualAdam(model.parameters(), lr=learning_rate) #optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    log_path = ROOT / "logs" / "role_b" / f"{run_name}_seed{seed}.csv"
+    weights_path = ROOT / "weights" / "role_b" / f"{run_name}_seed{seed}.pt"
     weights_path.parent.mkdir(parents=True, exist_ok=True)
 
     log_file, writer = make_log_writer(log_path)
