@@ -1,0 +1,29 @@
+method: a2c_bc_finetune
+env_id: DroneDispatch-v0
+
+run_name: a2c_bc_finetune
+init_weights: weights/role_b/bc_greedy_seed0.pt
+
+seed: 0
+total_timesteps: 50000
+
+gamma: 0.99
+gae_lambda: 0.95
+learning_rate: 0.0001
+
+num_steps: 128
+hidden_size: 128
+
+entropy_coef: 0.005
+value_coef: 0.5
+max_grad_norm: 0.5
+
+advantage_normalization: true
+
+eval:
+  config_path: configs/eval_standard.yaml
+  seeds: [0, 1, 2]
+  baselines:
+    - random
+    - greedy_nearest
+    - milp_rolling
