@@ -1,6 +1,8 @@
 method: a2c
 env_id: DroneDispatch-v0
 
+run_name: a2c_advnorm_off
+
 seed: 0
 total_timesteps: 50000
 
