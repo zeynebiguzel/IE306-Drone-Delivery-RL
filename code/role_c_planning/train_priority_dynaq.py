@@ -42,7 +42,7 @@ seed = args.seed
 
 set_seed(seed)
 
-with open("configs/dqn.yaml", "r") as f:
+with open("configs/priority_dynaq.yaml", "r") as f:
     config = yaml.safe_load(f)
 
 num_episodes = config["num_episodes"]
@@ -53,7 +53,7 @@ learning_rate = config["learning_rate"]
 target_update_frequency = config["target_update_frequency"]
 
 # Role C contribution
-planning_steps = 2
+planning_steps = config["planning_steps"]
 
 env = gym.make("DroneDispatch-v0")
 
@@ -158,16 +158,19 @@ for episode in range(num_episodes):
                 next_state
             ).unsqueeze(0)
 
-            next_q = target_model(
+            next_q_values = target_model(
                 next_state_tensor
-            ).max().item()
+            )
+
+            next_q = torch.max(
+                next_q_values
+            ).item()
 
             target = reward + gamma * next_q * (1 - done)
 
             td_error = abs(
                 target - current_q
             )
-
         # URGENCY
         ages = obs["orders"][:, 4]
 
@@ -175,10 +178,9 @@ for episode in range(num_episodes):
             urgency = np.max(ages) / 60.0
         else:
             urgency = 0.0
-
         # PRIORITY SCORE
-        priority = td_error + urgency
-
+        priority = td_error * (1.0 + urgency)
+        
         buffer.add(
             state,
             action,
