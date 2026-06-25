@@ -1,356 +1,361 @@
-import gymnasium as gym
-import drone_dispatch_env
-
-import numpy as np
-import torch
-import torch.optim as optim
-import torch.nn.functional as F
+from __future__ import annotations
 
 import argparse
+import csv
 import random
+import sys
+from pathlib import Path
+
+import numpy as np
 import yaml
 
-from network import DynaQNetwork
-from priority_dynaq import PriorityReplayBuffer
+# Repository root: your-repo/
+ROOT = Path(__file__).resolve().parents[2]
+
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
+
+try:
+    import drone_dispatch_env
+    from drone_dispatch_env import Config, DroneDispatchEnv
+except ImportError as e:
+    raise ImportError(
+        "Could not import drone_dispatch_env. "
+        "Run `pip install -e .` from the repository root."
+    ) from e
+
+from network import StateEncoder
+from priority_dynaq import PriorityDynaQAgent
 
 
-def set_seed(seed_value):
-    random.seed(seed_value)
-    np.random.seed(seed_value)
-    torch.manual_seed(seed_value)
+def load_yaml(path: Path) -> dict:
+    if path is None:
+        return {}
 
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed_value)
+    if not path.is_absolute():
+        path = ROOT / path
+
+    if not path.exists():
+        print(f"[warning] Config not found: {path}")
+        return {}
+
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+
+    return data or {}
 
 
-def preprocess_state(obs):
-    drones = obs["drones"].flatten()
-    orders = obs["orders"].flatten()
-    grid = obs["grid"].flatten()
-    time = obs["time"].flatten()
+def set_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
 
-    return np.concatenate(
-        [drones, orders, grid, time]
+
+def load_env_config(train_cfg: dict) -> Config:
+    eval_cfg_path = train_cfg.get(
+        "eval_config",
+        train_cfg.get("config_path", "configs/eval_standard.yaml"),
     )
 
+    full_path = ROOT / eval_cfg_path
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--seed", type=int, default=0)
+    if full_path.exists():
+        return Config.from_yaml(str(full_path))
 
-args = parser.parse_args()
-seed = args.seed
+    print(f"[warning] Could not find {full_path}. Using default Config().")
+    return Config()
 
-set_seed(seed)
 
-with open("configs/priority_dynaq.yaml", "r") as f:
-    config = yaml.safe_load(f)
+def make_paths(run_name: str, seed: int):
+    weights_dir = ROOT / "weights"
+    logs_dir = ROOT / "logs"
 
-num_episodes = config["num_episodes"]
-batch_size = config["batch_size"]
-epsilon = config["epsilon"]
-gamma = config["gamma"]
-learning_rate = config["learning_rate"]
-target_update_frequency = config["target_update_frequency"]
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
 
-# Role C contribution
-planning_steps = config["planning_steps"]
+    weights_path = weights_dir / f"{run_name}_seed{seed}.pkl.gz"
+    log_path = logs_dir / f"{run_name}_seed{seed}.csv"
 
-env = gym.make("DroneDispatch-v0")
+    return weights_path, log_path
 
-obs, info = env.reset(seed=seed)
 
-state_size = len(preprocess_state(obs))
-action_size = len(obs["action_mask"])
-
-print("STATE SIZE:", state_size)
-print("ACTION SIZE:", action_size)
-
-# Online Network
-model = DynaQNetwork(
-    state_size,
-    action_size
-)
-
-# Target Network
-target_model = DynaQNetwork(
-    state_size,
-    action_size
-)
-
-target_model.load_state_dict(
-    model.state_dict()
-)
-
-target_model.eval()
-
-optimizer = optim.Adam(
-    model.parameters(),
-    lr=learning_rate
-)
-
-buffer = PriorityReplayBuffer()
-
-episode_rewards = []
-
-for episode in range(num_episodes):
-
-    obs, info = env.reset(
-        seed=seed + episode
+def make_agent(train_cfg: dict, action_dim: int) -> PriorityDynaQAgent:
+    encoder = StateEncoder(
+        position_bin=int(train_cfg.get("position_bin", 2)),
+        order_position_bin=int(train_cfg.get("order_position_bin", 3)),
+        soc_bins=int(train_cfg.get("soc_bins", 5)),
+        age_bin=int(train_cfg.get("age_bin", 10)),
+        time_bins=int(train_cfg.get("time_bins", 10)),
+        top_k_orders=int(train_cfg.get("top_k_orders", 8)),
     )
 
-    terminated = False
-    truncated = False
+    alpha = float(train_cfg.get("alpha", 0.10))
 
-    total_reward = 0
+    epsilon_start = float(
+        train_cfg.get("epsilon_start", 1.0)
+    )
 
-    while not terminated and not truncated:
+    epsilon_min = float(
+        train_cfg.get(
+            "epsilon_min",
+            train_cfg.get("epsilon", 0.05)
+        )
+    )
 
-        state = preprocess_state(obs)
+    agent = PriorityDynaQAgent(
+        action_dim=action_dim,
+        alpha=alpha,
+        gamma=float(train_cfg.get("gamma", 0.99)),
+        epsilon_start=epsilon_start,
+        epsilon_min=epsilon_min,
+        epsilon_decay=float(train_cfg.get("epsilon_decay", 0.995)),
+        planning_steps=int(train_cfg.get("planning_steps", 20)),
+        priority_threshold=float(train_cfg.get("priority_threshold", 1e-4)),
+        encoder=encoder,
+    )
 
-        state_tensor = torch.FloatTensor(
-            state
-        ).unsqueeze(0)
+    return agent
 
-        q_values = model(state_tensor)
+def get_episode_stats(env) -> dict:
+    stats = getattr(env, "stats", {})
 
-        # Epsilon Greedy
-        if np.random.random() < epsilon:
+    delivered = int(stats.get("delivered", 0))
+    dropped = int(stats.get("dropped", 0))
+    depletion_events = int(stats.get("depletion_events", 0))
+    energy = float(stats.get("energy", 0.0))
+    late_cost = float(stats.get("late_cost", 0.0))
+    drop_cost = float(stats.get("drop_cost", 0.0))
+    depletion_cost = float(stats.get("depletion_cost", 0.0))
 
-            valid_actions = np.where(
-                obs["action_mask"] == 1
-            )[0]
+    denom = max(delivered, 1)
 
-            action = np.random.choice(
-                valid_actions
-            )
+    cost_per_order = (
+        energy
+        + late_cost
+        + drop_cost
+        + depletion_cost
+    ) / denom
 
-        else:
+    total_orders = delivered + dropped
 
-            action_mask = torch.FloatTensor(
-                obs["action_mask"]
-            )
+    success_rate = (
+        delivered / total_orders
+        if total_orders > 0
+        else 0.0
+    )
 
-            masked_q_values = q_values.clone()
+    return {
+        "delivered": delivered,
+        "dropped": dropped,
+        "depletion_events": depletion_events,
+        "energy": energy,
+        "cost_per_order": cost_per_order,
+        "success_rate": success_rate,
+    }
 
-            masked_q_values[0][
-                action_mask == 0
-            ] = -1e9
 
-            action = torch.argmax(
-                masked_q_values
-            ).item()
+def train_priority_dynaq(config_path: Path, seed: int) -> None:
+    train_cfg = load_yaml(config_path)
 
-        next_obs, reward, terminated, truncated, info = env.step(action)
+    set_seed(seed)
 
-        done = terminated or truncated
+    run_name = str(train_cfg.get("run_name", "priority_dynaq"))
 
-        next_state = preprocess_state(next_obs)
+    num_episodes = int(train_cfg.get("num_episodes", 300))
+    max_decision_steps = int(train_cfg.get("max_decision_steps", 5000))
 
-        # TD ERROR
-        with torch.no_grad():
+    env_cfg = load_env_config(train_cfg)
+    env = DroneDispatchEnv(env_cfg)
 
-            current_q = q_values[
-                0,
-                action
-            ].item()
+    obs, info = env.reset(seed=seed)
 
-            next_state_tensor = torch.FloatTensor(
-                next_state
-            ).unsqueeze(0)
+    action_dim = int(len(obs["action_mask"]))
 
-            next_q_values = target_model(
-                next_state_tensor
-            )
+    print("ACTION SIZE:", action_dim)
+    print("ROLE C METHOD: Tabular Priority Dyna-Q")
+    print("PLANNING STEPS:", train_cfg.get("planning_steps", 20))
 
-            next_q = torch.max(
-                next_q_values
-            ).item()
+    agent = make_agent(
+        train_cfg=train_cfg,
+        action_dim=action_dim,
+    )
 
-            target = reward + gamma * next_q * (1 - done)
+    weights_path, log_path = make_paths(
+        run_name=run_name,
+        seed=seed,
+    )
 
-            td_error = abs(
-                target - current_q
-            )
-        # URGENCY
-        ages = obs["orders"][:, 4]
+    best_cost = float("inf")
+    best_reward = -float("inf")
 
-        if len(ages) > 0:
-            urgency = np.max(ages) / 60.0
-        else:
-            urgency = 0.0
-        # PRIORITY SCORE
-        priority = td_error * (1.0 + urgency)
-        
-        buffer.add(
-            state,
-            action,
-            reward,
-            next_state,
-            done,
-            priority
+    with open(log_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "episode",
+                "episode_return",
+                "decision_steps",
+                "epsilon",
+                "mean_real_td_error",
+                "mean_planning_td_error",
+                "planning_updates",
+                "model_size",
+                "queue_size",
+                "delivered",
+                "dropped",
+                "depletion_events",
+                "energy",
+                "cost_per_order",
+                "success_rate",
+            ],
         )
 
-        total_reward += reward
+        writer.writeheader()
 
-        obs = next_obs
+        for episode in range(1, num_episodes + 1):
+            obs, info = env.reset(seed=seed + episode)
 
-        # REAL EXPERIENCE UPDATE
-        if len(buffer.memory) >= batch_size:
+            terminated = False
+            truncated = False
 
-            batch = buffer.sample(
-                batch_size
+            episode_return = 0.0
+            decision_steps = 0
+
+            real_td_errors = []
+            planning_td_errors = []
+            planning_updates = 0
+
+            while not terminated and not truncated:
+                action = agent.select_action(
+                    obs,
+                    training=True,
+                )
+
+                next_obs, reward, terminated, truncated, info = env.step(
+                    action
+                )
+
+                done = bool(terminated or truncated)
+
+                update_info = agent.observe(
+                    obs=obs,
+                    action=action,
+                    reward=float(reward),
+                    next_obs=next_obs,
+                    done=done,
+                )
+
+                real_td_errors.append(
+                    abs(float(update_info["real_td_error"]))
+                )
+
+                planning_td_errors.append(
+                    float(update_info["mean_planning_td_error"])
+                )
+
+                planning_updates += int(
+                    update_info["planning_updates"]
+                )
+
+                episode_return += float(reward)
+                decision_steps += 1
+
+                obs = next_obs
+
+                if decision_steps >= max_decision_steps:
+                    break
+
+            agent.decay_epsilon()
+
+            stats = get_episode_stats(env)
+
+            mean_real_td = (
+                float(np.mean(real_td_errors))
+                if real_td_errors
+                else 0.0
             )
 
-            states = torch.FloatTensor(
-                np.array([x[0] for x in batch])
+            mean_planning_td = (
+                float(np.mean(planning_td_errors))
+                if planning_td_errors
+                else 0.0
             )
 
-            actions = torch.LongTensor(
-                np.array([x[1] for x in batch])
+            row = {
+                "episode": episode,
+                "episode_return": episode_return,
+                "decision_steps": decision_steps,
+                "epsilon": agent.epsilon,
+                "mean_real_td_error": mean_real_td,
+                "mean_planning_td_error": mean_planning_td,
+                "planning_updates": planning_updates,
+                "model_size": len(agent.model),
+                "queue_size": len(agent.priority_queue),
+                "delivered": stats["delivered"],
+                "dropped": stats["dropped"],
+                "depletion_events": stats["depletion_events"],
+                "energy": stats["energy"],
+                "cost_per_order": stats["cost_per_order"],
+                "success_rate": stats["success_rate"],
+            }
+
+            writer.writerow(row)
+            f.flush()
+
+            print(
+                f"Episode {episode:04d}/{num_episodes} | "
+                f"Return={episode_return:8.2f} | "
+                f"Cost={stats['cost_per_order']:.4f} | "
+                f"Success={stats['success_rate']:.3f} | "
+                f"Delivered={stats['delivered']} | "
+                f"Dropped={stats['dropped']} | "
+                f"Eps={agent.epsilon:.3f} | "
+                f"Model={len(agent.model)} | "
+                f"PlanUpdates={planning_updates}"
             )
 
-            rewards = torch.FloatTensor(
-                np.array([x[2] for x in batch])
+            improved_cost = (
+                stats["delivered"] > 0
+                and stats["cost_per_order"] < best_cost
             )
 
-            next_states = torch.FloatTensor(
-                np.array([x[3] for x in batch])
-            )
+            improved_reward = episode_return > best_reward
 
-            dones = torch.FloatTensor(
-                np.array([x[4] for x in batch])
-            )
+            if improved_cost or improved_reward:
+                best_cost = min(best_cost, stats["cost_per_order"])
+                best_reward = max(best_reward, episode_return)
+                agent.save(str(weights_path))
 
-            q_values_batch = model(states)
+        agent.save(str(weights_path))
 
-            current_q = q_values_batch.gather(
-                1,
-                actions.unsqueeze(1)
-            ).squeeze()
+    print("\nTRAINING FINISHED")
+    print(f"MODEL SAVED: {weights_path}")
+    print(f"LOG SAVED: {log_path}")
 
-            with torch.no_grad():
 
-                next_q_values = target_model(
-                    next_states
-                )
+def main():
+    parser = argparse.ArgumentParser()
 
-                max_next_q = next_q_values.max(
-                    dim=1
-                )[0]
-
-                target_q = rewards + gamma * max_next_q * (
-                    1 - dones
-                )
-
-            loss = F.mse_loss(
-                current_q,
-                target_q
-            )
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            # DYNA-Q PLANNING
-            for _ in range(planning_steps):
-
-                planning_batch = buffer.sample(
-                    batch_size
-                )
-
-                if len(planning_batch) == 0:
-                    continue
-
-                states = torch.FloatTensor(
-                    np.array([x[0] for x in planning_batch])
-                )
-
-                actions = torch.LongTensor(
-                    np.array([x[1] for x in planning_batch])
-                )
-
-                rewards = torch.FloatTensor(
-                    np.array([x[2] for x in planning_batch])
-                )
-
-                next_states = torch.FloatTensor(
-                    np.array([x[3] for x in planning_batch])
-                )
-
-                dones = torch.FloatTensor(
-                    np.array([x[4] for x in planning_batch])
-                )
-
-                q_values_batch = model(states)
-
-                current_q = q_values_batch.gather(
-                    1,
-                    actions.unsqueeze(1)
-                ).squeeze()
-
-                with torch.no_grad():
-
-                    next_q_values = target_model(
-                        next_states
-                    )
-
-                    max_next_q = next_q_values.max(
-                        dim=1
-                    )[0]
-
-                    target_q = rewards + gamma * max_next_q * (
-                        1 - dones
-                    )
-
-                planning_loss = F.mse_loss(
-                    current_q,
-                    target_q
-                )
-
-                optimizer.zero_grad()
-                planning_loss.backward()
-                optimizer.step()
-
-    if (episode + 1) % target_update_frequency == 0:
-
-        target_model.load_state_dict(
-            model.state_dict()
-        )
-
-    episode_rewards.append(
-        total_reward
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="configs/priority_dynaq.yaml",
+        help="Path to Priority Dyna-Q config file.",
     )
 
-    print(
-        f"Episode {episode + 1} | "
-        f"Reward = {total_reward:.2f} | "
-        f"Buffer = {len(buffer.memory)}"
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Training seed.",
     )
 
-torch.save(
-    model.state_dict(),
-    f"weights/priority_dynaq_seed{seed}.pt"
-)
+    args = parser.parse_args()
 
-with open(
-    f"logs/priority_dynaq_seed{seed}.csv",
-    "w"
-) as f:
+    train_priority_dynaq(
+        config_path=Path(args.config),
+        seed=int(args.seed),
+    )
 
-    f.write("episode,reward\n")
 
-    for i, reward in enumerate(
-        episode_rewards,
-        start=1
-    ):
-        f.write(
-            f"{i},{reward}\n"
-        )
-
-print(
-    f"MODEL SAVED: weights/priority_dynaq_seed{seed}.pt"
-)
-
-print(
-    "\nPRIORITY DYNA-Q TRAINING FINISHED"
-)
+if __name__ == "__main__":
+    main()
