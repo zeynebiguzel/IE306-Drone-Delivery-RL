@@ -1,0 +1,15 @@
+# AI Use Statement
+
+We used ChatGPT as an assistance tool during this project.
+
+ChatGPT was used for:
+
+* understanding some implementation details,
+* getting coding and debugging support,
+* organizing the Role C planning approach,
+* improving code readability,
+* preparing concise documentation.
+
+All code was reviewed, executed, and tested locally by the team. The final implementation, experiments, and reported results were produced in our local repository environment.
+
+ChatGPT suggestions were not used directly without checking. We tested the outputs, fixed errors, and kept only the parts that worked correctly for the project.
