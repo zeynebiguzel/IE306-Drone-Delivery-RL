@@ -1,0 +1,21 @@
+run_name: meta_dynaq_v2_p0
+
+eval_config: configs/eval_standard.yaml
+
+num_episodes: 200
+max_decision_steps: 5000
+
+alpha: 0.15
+gamma: 0.99
+
+epsilon_start: 1.0
+epsilon_min: 0.03
+epsilon_decay: 0.988
+
+planning_steps: 0
+priority_threshold: 0.00005
+
+soc_bins: 5
+trip_bin: 10
+age_bin: 20
+time_bins: 5
